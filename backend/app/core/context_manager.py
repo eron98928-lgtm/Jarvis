@@ -1,6 +1,7 @@
 import os
 import google.generativeai as genai
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.core.models import Context
 
 class ContextManager:
@@ -18,12 +19,18 @@ class ContextManager:
         self.db.add(new_context)
         self.db.commit()
         
-        # Check if compression is needed (every 50 interactions)
-        count = self.db.query(Context).filter(Context.user_id == user_id, Context.is_compressed == False).count()
-        if count > 50:
+        # Gatilho de compressão baseado em volume de caracteres (~15.000)
+        # Isso evita estouro de memória (OOM) se as mensagens forem muito grandes
+        total_chars = self.db.query(func.sum(func.length(Context.content))).filter(
+            Context.user_id == user_id, 
+            Context.is_compressed == False
+        ).scalar() or 0
+
+        if total_chars > 15000:
             self.compress_context(user_id)
 
     def get_active_context(self, user_id: int):
+        # Retorna as últimas 10 interações para manter a janela de contexto imediata
         contexts = self.db.query(Context).filter(
             Context.user_id == user_id
         ).order_by(Context.created_at.desc()).limit(10).all()
@@ -34,15 +41,21 @@ class ContextManager:
         if not self.model:
             return
 
+        # Busca interações não comprimidas para resumir
         uncompressed = self.db.query(Context).filter(
             Context.user_id == user_id, 
             Context.is_compressed == False
-        ).limit(40).all()
+        ).order_by(Context.created_at.asc()).all()
         
-        if not uncompressed:
+        if len(uncompressed) < 2:
             return
 
-        full_text = "\n".join([c.content for c in uncompressed])
+        # Mantém as últimas 5 mensagens fora da compressão para fluidez da conversa
+        to_compress = uncompressed[:-5]
+        if not to_compress:
+            return
+
+        full_text = "\n".join([c.content for c in to_compress])
         
         prompt = f"Resuma as seguintes interações de chat mantendo os pontos principais e o contexto para uma IA: \n\n{full_text}"
         
@@ -50,14 +63,14 @@ class ContextManager:
             response = self.model.generate_content(prompt)
             summary = response.text
             
-            # Mark old contexts as compressed
-            for c in uncompressed:
+            # Marca contextos antigos como comprimidos
+            for c in to_compress:
                 c.is_compressed = True
             
-            # Add summary context
+            # Adiciona o resumo como um novo contexto comprimido
             summary_context = Context(
                 user_id=user_id, 
-                content=f"[RESUMO]: {summary}", 
+                content=f"[RESUMO DE CONTEXTO]: {summary}", 
                 is_compressed=True
             )
             self.db.add(summary_context)

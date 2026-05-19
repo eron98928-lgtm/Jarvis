@@ -10,18 +10,25 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    access_level = Column(Integer, default=1) # 1: Common, 2: Eron/Admin
+    access_level = Column(Integer, default=1) # 1: Comum, 2: Eron/Admin
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relacionamentos
+    trusted_devices = relationship("TrustedDevice", back_populates="owner")
 
-class Device(Base):
-    __tablename__ = "devices"
+class TrustedDevice(Base):
+    """Tabela formal para cadastro obrigatório de dispositivos confiáveis."""
+    __tablename__ = "trusted_devices"
     id = Column(Integer, primary_key=True, index=True)
-    device_id = Column(String, unique=True, index=True)
-    name = Column(String)
+    device_token = Column(String, unique=True, index=True) # Token único do dispositivo (ex: hash de hardware)
+    name = Column(String) # Nome amigável (ex: "iPhone do Eron")
     owner_id = Column(Integer, ForeignKey("users.id"))
-    is_authorized = Column(Boolean, default=False)
-    last_seen = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+    last_used_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    owner = relationship("User", back_populates="trusted_devices")
 
 class Context(Base):
     __tablename__ = "contexts"
