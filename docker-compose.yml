@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    user: "1000:1000"
+    read_only: false # Set to false because of SQLite, but we restrict capabilities
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - DATABASE_URL=sqlite:///./data/db/jarvis.db
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+
+  frontend:
+    build: ./frontend
+    user: "101:101" # Nginx non-root
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+    restart: always
+
+volumes:
+  data:

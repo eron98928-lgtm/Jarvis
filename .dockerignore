@@ -1,0 +1,13 @@
+.git
+.env
+.env.example
+data/
+backend/__pycache__/
+backend/*.pyc
+frontend/node_modules/
+*.tar.gz
+*.log
+security_scan.sh
+security_hardening.sh
+setup.sh
+README.md
